@@ -1,0 +1,523 @@
+#include "Kalman.h"
+#include <Wire.h>
+#include <Math.h>
+#include "Adafruit_NeoPixel.h"
+
+Adafruit_NeoPixel  rgb_display_9(60);
+Adafruit_NeoPixel  rgb_display_9_side1(30);
+Adafruit_NeoPixel  rgb_display_9_side2(30);
+
+int brightness = 0;
+int counter = 0;
+int t = 10;
+int rgb_t = 1;
+int cut_pos = 1;
+
+int top_alert = 180;
+int slight_alert = 80;
+
+bool mode = true;
+int last_switch_status = 0;
+int switch_status = 0;
+
+float fRad2Deg = 57.295779513f;
+const int MPU = 0x68; 
+const int nValCnt = 7;
+
+const int nCalibTimes = 1000; 
+int calibData[nValCnt]; 
+
+unsigned long nLastTime = 0;
+float fLastRoll = 0.0f; 
+float fLastPitch = 0.0f;
+Kalman kalmanRoll;
+Kalman kalmanPitch; 
+
+void setup() {
+  rgb_display_9.begin(); // initialization
+  rgb_display_9.setPin(9);
+  rgb_display_9_side1.begin();
+  rgb_display_9_side1.setPin(8);
+  rgb_display_9_side2.begin();
+  rgb_display_9_side2.setPin(7);
+  Serial.begin(9600); 
+  Wire.begin(); 
+  WriteMPUReg(0x6B, 0); 
+
+  Calibration();
+  nLastTime = micros(); 
+  pinMode(12, INPUT);
+}
+
+void loop() {
+  switch_status = digitalRead(12);
+  if ((last_switch_status == 1) && (switch_status == 0))
+  {
+    mode = !mode;
+    Serial.println("switch status changed!");
+  }
+  
+  int readouts[nValCnt];
+  ReadAccGyr(readouts);
+  
+  float realVals[7];
+  Rectify(readouts, realVals); 
+
+  //计算加速度向量的模长，均以g为单位
+  float fNorm = sqrt(realVals[0] * realVals[0] + realVals[1] * realVals[1] + realVals[2] * realVals[2]);
+  float fRoll = GetRoll(realVals, fNorm); 
+  if (realVals[1] > 0) {
+    fRoll = -fRoll;
+  }
+  float fPitch = GetPitch(realVals, fNorm); 
+  if (realVals[0] < 0) {
+    fPitch = -fPitch;
+  }
+
+  unsigned long nCurTime = micros();
+  float dt = (double)(nCurTime - nLastTime) / 1000000.0;
+  // Kalman filter on Roll and Pitch
+  float fNewRoll = kalmanRoll.getAngle(fRoll, realVals[4], dt);
+  float fNewPitch = kalmanPitch.getAngle(fPitch, realVals[5], dt);
+  // calculate acceleration w.r.t. filtering result
+  float fRollRate = (fNewRoll - fLastRoll) / dt;
+  float fPitchRate = (fNewPitch - fLastPitch) / dt;
+ 
+ // update roll and pitch
+  fLastRoll = fNewRoll;
+  fLastPitch = fNewPitch;
+  //更新本次测的时间
+  nLastTime = nCurTime;
+
+  int n = digitalRead(12); // get the state of the switch
+
+//  Serial.print(n);
+//  // COLORFUL MODE
+//  if (n == HIGH) 
+//  {
+//    {
+//      rgb_display_9.setBrightness(brightness);
+//      if (brightness > 6)
+//      {
+//        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+//        {
+//          rgb_display_9.setPixelColor(i-1, 255,240，0); 
+//
+//          rgb_display_9.show();
+//          // delay(50);
+//        }
+//      }
+//      else {
+//        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+//        {
+//          rgb_display_9.setPixelColor(i-1, 255,240,0); 
+//          // rgb_display_9.setBrightness(5);
+//          rgb_display_9.show();// display
+//          // delay(50);
+//        }
+//      }
+//      counter = counter + 1;
+//      if (counter % 1 == 0)
+//      {
+//          brightness = (brightness + t);
+//      }
+//      Serial.print(brightness);
+//      if (brightness > 50)
+//      {
+//        t = -t;
+//      }
+//      else if ((t < 0) && (brightness < 6))
+//      {
+//        t = -t;
+//      }
+//    }
+//
+
+//  if (n == LOW) 
+
+
+
+// random dynamic light MODE
+if (n == LOW) 
+if (mode == true) 
+  {
+    {
+      rgb_display_9.setBrightness(brightness);
+      rgb_display_9_side1.setBrightness(brightness);
+      rgb_display_9_side2.setBrightness(brightness);
+
+      if (brightness > 10)
+
+      {
+        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+        {
+          if (i <= cut_pos)
+          {
+//            rgb_display_9.setPixelColor(i-1, 255,240,0); 
+//            rgb_display_9.setPixelColor(i-1, 255,240,0); 
+            rgb_display_9.setPixelColor(i-1, 255,240,0); 
+            rgb_display_9.show();
+            rgb_display_9_side1.setPixelColor(i-1,  255,240,0); 
+            rgb_display_9_side1.show();
+            rgb_display_9_side2.setPixelColor(i-1,  255,240,0); 
+            rgb_display_9_side2.show();
+
+//            rgb_display_9.show();
+          }
+          if ((i >cut_pos) && (i <= cut_pos + 8))
+          {
+//            rgb_display_9.setPixelColor(i-1, 255,240,0);
+//            rgb_display_9.setPixelColor(i-1, 255,240,0); 
+
+//            rgb_display_9.show();
+          rgb_display_9.setPixelColor(i-1, 255,240,0);
+          rgb_display_9.show();
+          rgb_display_9_side1.setPixelColor(i-1, 255,240,0);
+          rgb_display_9_side1.show();
+          rgb_display_9_side2.setPixelColor(i-1, 255,240,0);
+          rgb_display_9_side2.show();
+          }
+          if ((i >(cut_pos +8)) && (i <= cut_pos + 16))
+          {
+//            rgb_display_9.setPixelColor(i-1, 255,240,0); 
+//            rgb_display_9.setPixelColor(i-1, 255,240,0); 
+//
+//
+//            rgb_display_9.show();
+          rgb_display_9.setPixelColor(i-1,  255,240,0); 
+          rgb_display_9.show();
+          rgb_display_9_side1.setPixelColor(i-1,  255,240,0); 
+          rgb_display_9_side1.show();
+          rgb_display_9_side2.setPixelColor(i-1,  255,240,0);  
+          rgb_display_9_side2.show();
+          }
+
+          if (i > cut_pos+16)
+          {
+//            rgb_display_9.setPixelColor(i-1, 138,43,226); 
+//            rgb_display_9.setPixelColor(i-1, 147,72,225); 
+//
+//
+//            rgb_display_9.show();
+          rgb_display_9.setPixelColor(i-1,   138,43,226); 
+          rgb_display_9.show();
+          rgb_display_9_side1.setPixelColor(i-1,   138,43,226); 
+          rgb_display_9_side1.show();
+          rgb_display_9_side2.setPixelColor(i-1, 138,43,226); 
+          rgb_display_9_side2.show();
+          }
+          // delay(50);
+        }
+      }
+            else {
+        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+        {
+//          rgb_display_9.setPixelColor(i-1, 255,240,0); 
+//          // rgb_display_9.setBrightness(5);
+//          rgb_display_9.show();// display
+//          // delay(50);
+          rgb_display_9.setPixelColor(i-1,  255,240,0); 
+          rgb_display_9.show();
+          rgb_display_9_side1.setPixelColor(i-1,  255,240,0);  
+          rgb_display_9_side1.show();
+          rgb_display_9_side2.setPixelColor(i-1, 255,240,0); 
+          rgb_display_9_side2.show();
+        }
+      }
+
+      counter = counter + 1;
+
+
+//      if (counter % 2 == 0)
+//      {
+//        if (random(0, 100)>60)
+//        {
+//          cut_pos += 1; //random(0, 50);
+//        }
+//        else{
+//          cut_pos += 5;
+//        }
+//      }
+//
+//      
+      if (counter % 2 == 0)
+      {
+          cut_pos = random(0, 20);
+      }
+//      Serial.print(cut_pos);
+        if (counter % 1 == 0)
+      {
+          brightness = (brightness + t);
+      }
+//      Serial.print(brightness);
+      if (brightness > 50)
+      {
+        t = -t;
+      }
+      else if ((t < 0) && (brightness < 10))
+      {
+        t = -t;
+      }
+
+    }
+  }
+// // dynamic light MODE
+//  if (n == HIGH) 
+//  {
+//    {
+//      rgb_display_9.setBrightness(50);
+////      if ((cut_pos) > 0)
+//      {
+//        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+//        {
+//          if (i <= cut_pos)
+//          {
+//            rgb_display_9.setPixelColor(i-1, 138,43,226); 
+//
+//            rgb_display_9.show();
+//          }
+//          if ((i >cut_pos) && (i <= cut_pos + 15))
+//          {
+//            rgb_display_9.setPixelColor(i-1, 99,229,201); 
+//
+//            rgb_display_9.show();
+//          }
+//          if (i > cut_pos+15)
+//          {
+//            rgb_display_9.setPixelColor(i-1, 138,43,226); 
+//
+//            rgb_display_9.show();
+//          }
+//          // delay(50);
+//        }
+//      }
+//        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+//        {
+//          rgb_display_9.setPixelColor(i-1, 138,43,226); 
+//
+//          rgb_display_9.show();
+//          // delay(50);
+//        }
+//      }
+//        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+//        {
+//          rgb_display_9.setPixelColor(i-1, 138,43,226); 
+//
+//          rgb_display_9.show();
+//          // delay(50);
+//        }
+//      }
+//      else {
+//        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+//        {
+//          rgb_display_9.setPixelColor(i-1, 30,144,255); 
+//          // rgb_display_9.setBrightness(5);
+//          rgb_display_9.show();// display
+//          // delay(50);
+//        }
+//      }
+//      counter = counter + 1;
+//      if (counter % 1 == 0)
+//      {
+//          cut_pos = (cut_pos + t)% 60;
+//      }
+//      Serial.print(cut_pos);
+//      if (brightness > 40)
+//      {
+//        t = -t;
+//      }
+//      else if ((t < 0) && (brightness < 6))
+//      {
+//        t = -t;
+//      }
+//    }
+
+
+// frequency control
+//rgb_t = 25;
+//   {
+//    brightness = 40;
+//    {
+//      rgb_display_9.setBrightness(45);
+////      if (brightness > 6)
+//      {
+////        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+////        {
+////          rgb_display_9.setPixelColor(i-1, 138,43,226); 
+////
+////          rgb_display_9.show();
+////          delay(rgb_t);
+////        }
+//        delay(rgb_t);
+//      }
+//
+////         if (brightness > 6)
+//      {
+//        rgb_display_9.setBrightness(1);
+////        for (int i = 1; i <= 60; i = i + (1)) // set color for each LED along the band
+////        {
+////          rgb_display_9.setPixelColor(i-1, 138,43,226); 
+////
+////          rgb_display_9.show();
+////          delay(50-rgb_t);
+////        }
+//        delay(50-rgb_t); 
+//      }
+//
+//      counter = counter + 1;
+////      if (counter % 1 == 0)
+////      {
+////          rgb_t = (rgb_t + t);
+////
+////      }
+//      Serial.print(brightness);
+//      if (rgb_t > 50)
+//      {
+//        t = -t;
+//      }
+//      else if ((t < 0) && (rgb_t < 5))
+//      {
+//        t = -t;
+//      }
+//      
+//
+//
+//    }
+//    
+//    }
+
+
+// SAFE MODE
+  
+else 
+  {
+  // extremely extensive motion detected 
+  if ((fRollRate > top_alert) || (fRollRate < -top_alert)) 
+  {
+    for (int i = 1; i <= 60; i = i + (1)) 
+    {
+      rgb_display_9.setPixelColor(i-1, 255,0,0);
+      rgb_display_9.show();
+      rgb_display_9_side1.setPixelColor(i-1, 255,0,0);
+      rgb_display_9_side1.show();
+      rgb_display_9_side2.setPixelColor(i-1, 255,0,0);
+      rgb_display_9_side2.show();
+    }
+    delay(800);
+  }
+  // overly extensive alert
+  else if ((((fRollRate > slight_alert) && fRollRate < top_alert)) || ((fRollRate < -slight_alert) && fRollRate > -top_alert))
+  {
+    for (int i = 1; i <= 60; i = i + (1)) 
+    {
+      rgb_display_9.setPixelColor(i-1, 255,255,0);
+      rgb_display_9.show();
+      rgb_display_9_side1.setPixelColor(i-1, 255,255,0);
+      rgb_display_9_side1.show();
+      rgb_display_9_side2.setPixelColor(i-1, 255,255,0);
+      rgb_display_9_side2.show();
+
+    }
+    delay(150);
+  }
+  else // normal state
+    {
+      for (int i = 1; i <= 60; i = i + (1)) 
+      {
+        //rgb_display_9.setPixelColor(i-1, 138,43,226); //purplish blue (safe color)
+        //rgb_display_9.setPixelColor(i-1, 99,229,201);
+        //rgb_display_9.setPixelColor(i-1, 37,229,10);
+        rgb_display_9.setPixelColor(i-1, 138,43,226);
+        rgb_display_9_side1.setPixelColor(i-1, 99,229,201);
+        rgb_display_9_side1.show();
+        rgb_display_9_side2.setPixelColor(i-1, 147,72,225);
+        rgb_display_9_side2.show();
+        rgb_display_9.show();
+      }
+    }
+  }
+
+  Serial.print("Roll:");
+  Serial.print(fNewRoll); Serial.print('(');
+  Serial.print(fRollRate); Serial.print("),\tPitch:");
+  Serial.print(fNewPitch); Serial.print('(');
+  Serial.print(fPitchRate); Serial.print(")\n");
+  delay(10);
+
+  last_switch_status = switch_status;
+  
+}
+
+
+//write to MPU
+void WriteMPUReg(int nReg, unsigned char nVal) {
+  Wire.beginTransmission(MPU);
+  Wire.write(nReg);
+  Wire.write(nVal);
+  Wire.endTransmission(true);
+}
+
+//read from MPU
+unsigned char ReadMPUReg(int nReg) {
+  Wire.beginTransmission(MPU);
+  Wire.write(nReg);
+  Wire.requestFrom(MPU, 1, true);
+  Wire.endTransmission(true);
+  return Wire.read();
+}
+
+//get the corresponding states from MPU6050
+
+void ReadAccGyr(int *pVals) {
+  Wire.beginTransmission(MPU);
+  Wire.write(0x3B);
+  Wire.requestFrom(MPU, nValCnt * 2, true);
+  Wire.endTransmission(true);
+  for (long i = 0; i < nValCnt; ++i) {
+    pVals[i] = Wire.read() << 8 | Wire.read();
+  }
+}
+
+// compensate bias through Kalman filtering
+void Calibration()
+{
+  float valSums[7] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0};
+
+  for (int i = 0; i < nCalibTimes; ++i) {
+    int mpuVals[nValCnt];
+    ReadAccGyr(mpuVals);
+    for (int j = 0; j < nValCnt; ++j) {
+      valSums[j] += mpuVals[j];
+    }
+  }
+
+  for (int i = 0; i < nValCnt; ++i) {
+    calibData[i] = int(valSums[i] / nCalibTimes);
+  }
+  calibData[2] += 16384; 
+}
+
+
+float GetRoll(float *pRealVals, float fNorm) {
+  float fNormXZ = sqrt(pRealVals[0] * pRealVals[0] + pRealVals[2] * pRealVals[2]);
+  float fCos = fNormXZ / fNorm;
+  return acos(fCos) * fRad2Deg;
+}
+
+
+float GetPitch(float *pRealVals, float fNorm) {
+  float fNormYZ = sqrt(pRealVals[1] * pRealVals[1] + pRealVals[2] * pRealVals[2]);
+  float fCos = fNormYZ / fNorm;
+  return acos(fCos) * fRad2Deg;
+}
+
+
+void Rectify(int *pReadout, float *pRealVals) {
+  for (int i = 0; i < 3; ++i) {
+    pRealVals[i] = (float)(pReadout[i] - calibData[i]) / 16384.0f;
+  }
+  pRealVals[3] = pReadout[3] / 340.0f + 36.53;
+  for (int i = 4; i < 7; ++i) {
+    pRealVals[i] = (float)(pReadout[i] - calibData[i]) / 131.0f;
+  }
+}
